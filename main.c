@@ -2,9 +2,6 @@
 #include "math.h"
 
 #define WINSIDE 1000
-#define CENTERX (WINX / 2)
-#define CENTERY (WINY / 2)
-#define CENTER ((Vector2){CENTERX,CENTERY})
 
 #define LINE_BIG 5
 #define LINE_SMALL 1
@@ -12,7 +9,6 @@
 #define POINT_RADIUS 10
 
 #define PRIMARY_COL ((Color){255,255,255,255})
-#define SECONDARY_COL ((Color){255,255,255,128})
 #define CIRCLE_FILL_COL ((Color){255,255,255,32})
 #define SIN_COL ((Color){0,128,255,255})
 #define COS_COL ((Color){200,0,255,255})
@@ -22,8 +18,6 @@
 #define QUADRANT_II_OFFSET (PI/2)
 #define QUADRANT_III_OFFSET PI
 #define QUADRANT_IV_OFFSET (PI*1.5)
-
-#define VISUAL_RESOLUTION 20
 
 typedef struct UnitCircle {
     Vector2 position;
