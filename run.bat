@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set MAIN_C="./main.c"
+set MAIN_C="./src/main.c"
 set MAIN_O="./build/main.o"
 set MAIN_EXE="./build/main.exe"
 
