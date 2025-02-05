@@ -1,8 +1,7 @@
 #include "./raylib/include/raylib.h"
 #include "math.h"
 
-#define WINX 1000
-#define WINY 1000
+#define WINSIDE 1000
 #define CENTERX (WINX / 2)
 #define CENTERY (WINY / 2)
 #define CENTER ((Vector2){CENTERX,CENTERY})
@@ -11,14 +10,13 @@
 #define LINE_SMALL 1
 
 #define POINT_RADIUS 10
-#define ANGLE_FILL_RADIUS 50
 
 #define PRIMARY_COL ((Color){255,255,255,255})
 #define SECONDARY_COL ((Color){255,255,255,128})
 #define CIRCLE_FILL_COL ((Color){255,255,255,32})
-#define ANGLE_FILL_COL ((Color){255,255,255,64})
-#define SIN_COL RED
-#define COS_COL YELLOW
+#define SIN_COL ((Color){0,128,255,255})
+#define COS_COL ((Color){200,0,255,255})
+#define TAN_COL ((Color){255,128,0,255})
 
 #define QUADRANT_I_OFFSET 0
 #define QUADRANT_II_OFFSET (PI/2)
@@ -35,10 +33,12 @@ typedef struct UnitCircle {
     float deg;
     float sin;
     float cos;
+    float tan;
     Vector2 point;
 } UnitCircle;
 
 typedef struct FunctionVisual {
+    char name[4];
     float (*function)(float);
     Vector2 position;
     Vector2 size;
@@ -55,6 +55,7 @@ void update_unit_circle_towards_position(UnitCircle *uc, Vector2 position) {
 
     uc->cos = adj * hyp_normalize_factor;
     uc->sin = opp * hyp_normalize_factor;
+    uc->tan = uc->sin / uc->cos;
 
     uc->point = (Vector2) {
         uc->center.x + (uc->cos * uc->radius),
@@ -81,8 +82,9 @@ void update_unit_circle_towards_position(UnitCircle *uc, Vector2 position) {
 
 void update_unit_circle_radians(UnitCircle *uc, float rad) {
     uc->rad = rad;
-    uc->cos = cos(rad);
-    uc->sin = sin(rad);
+    uc->cos = cosf(rad);
+    uc->sin = sinf(rad);
+    uc->tan = tanf(rad);
 
     uc->point = (Vector2) {
         uc->center.x + (uc->cos * uc->radius),
@@ -94,7 +96,8 @@ void update_unit_circle_radians(UnitCircle *uc, float rad) {
 
 typedef enum TextFlags {
     TEXT_FLAG_NONE = 0,
-    TEXT_FLAG_BACKING_RECTANGLE = 1 << 0,
+    TEXT_FLAG_LARGE = 1 << 0,
+    TEXT_FLAG_BACKING_RECTANGLE = 1 << 1,
 } TextFlags;
 
 static inline bool has_flag(int flags, int flag) {
@@ -102,7 +105,7 @@ static inline bool has_flag(int flags, int flag) {
 }
 
 void draw_text_centered(Font *font, TextFlags flags, Vector2 position, float rotation, char *text, Color color) {
-    int size = 30;
+    int size = has_flag(flags, TEXT_FLAG_LARGE) ? 40 : 30;
     int spacing = 2;
     Vector2 text_dimensions = MeasureTextEx(*font, text, size, spacing);
     Vector2 text_origin = {
@@ -131,35 +134,124 @@ bool is_point_inside_area(Vector2 area_pos, Vector2 area_size, Vector2 point_pos
     );
 }
 
+Vector2 get_angle_direction(float deg) {
+    float rad = deg * DEG2RAD;
+    return (Vector2) {
+        cosf(rad),
+        -sinf(rad)
+    };
+}
+
+Vector2 vec2_in_direction(Vector2 position, Vector2 direction, float distance) {
+    return (Vector2) {
+        position.x + (direction.x * distance),
+        position.y + (direction.y * distance),
+    };
+}
+
+void draw_angles_on_unit_circle(Font *font, UnitCircle *uc, float *angles, int angle_count) {
+    for (int i = 0; i < angle_count; i++) {
+        float deg = angles[i];
+        Vector2 dir = get_angle_direction(deg);
+        DrawLineV(
+            vec2_in_direction(uc->center, dir, 0.95f * uc->radius),
+            vec2_in_direction(uc->center, dir, 1.05f * uc->radius),
+            PRIMARY_COL
+        );
+        draw_text_centered(
+            font,
+            TEXT_FLAG_NONE,
+            vec2_in_direction(uc->center, dir, 1.2f * uc->radius),
+            (deg <= 90 || deg > 270) ? -deg : 180-deg,
+            TextFormat("%.0f", deg),
+            PRIMARY_COL
+        );
+    }
+}
+
+void draw_right_angle(UnitCircle *uc) {
+    const float offset = uc->radius * 0.15;
+    const float low_offset = 20;
+    const float high_offset = 65;
+    Vector2 right_angle_offset;
+    if (uc->deg > low_offset && uc->deg < high_offset) {
+        Vector2 v = { uc->point.x - offset, uc->center.y - offset };
+        DrawLine(v.x, v.y, uc->point.x, v.y, PRIMARY_COL);
+        DrawLine(v.x, v.y, v.x, uc->center.y, PRIMARY_COL);
+    } else if (uc->deg > (low_offset+90) && uc->deg < (high_offset+90)) {
+        Vector2 v = { uc->center.x - offset, uc->point.y + offset };
+        DrawLine(v.x, v.y, uc->center.x, v.y, PRIMARY_COL);
+        DrawLine(v.x, v.y, v.x, uc->point.y, PRIMARY_COL);
+    } else if (uc->deg > (180+low_offset) && uc->deg < (180+high_offset)) {
+        Vector2 v = { uc->point.x + offset, uc->center.y + offset };
+        DrawLine(v.x, v.y, uc->point.x, v.y, PRIMARY_COL);
+        DrawLine(v.x, v.y, v.x, uc->center.y, PRIMARY_COL);
+    } else if (uc->deg > (270+low_offset) && uc->deg < (270+high_offset)) {
+        Vector2 v = { uc->center.x + offset, uc->point.y - offset };
+        DrawLine(v.x, v.y, uc->center.x, v.y, PRIMARY_COL);
+        DrawLine(v.x, v.y, v.x, uc->point.y, PRIMARY_COL);
+    }
+}
+
 int main(void) {
-    InitWindow(WINX, WINY, "Trig");
+    InitWindow(WINSIDE, WINSIDE, "Trig");
+    SetTargetFPS(60);
 
     Font font = LoadFont("arial.ttf");
 
+    const int visual_angles_count = 16;
+    float visual_angles[visual_angles_count];
+    {
+        for (int i = 0; i < 4; i++) {
+            int idx = 4*i;
+            float deg = 90*i;
+            visual_angles[idx+0] = deg+30;
+            visual_angles[idx+1] = deg+45;
+            visual_angles[idx+2] = deg+60;
+            visual_angles[idx+3] = deg+90;
+        }
+    }
+
     UnitCircle uc;
-    uc.position = (Vector2){WINX*0.25,WINY*0.1};
-    uc.radius = WINX*0.25;
+    uc.position = (Vector2){WINSIDE*0.3,WINSIDE*0.2};
+    uc.radius = WINSIDE*0.2;
     uc.center = (Vector2){
         uc.position.x + uc.radius,
         uc.position.y + uc.radius
     };
 
-    const int func_visuals_count = 2;
+    const int func_visuals_count = 3;
     FunctionVisual func_visuals[func_visuals_count];
     {
+        float x = WINSIDE*0.1;
+        float y = WINSIDE*0.8;
+        float width = WINSIDE*0.6/3;
+        float height = WINSIDE*0.1;
+        int resolution = 32;
+
         func_visuals[0] = (FunctionVisual) {
+            .name = "sin",
             .function = sinf,
-            .position = (Vector2){WINX*0.1,WINY*0.75},
-            .size = (Vector2){WINX*0.3,WINY*0.1},
-            .resolution = 40,
+            .position = (Vector2){x,y},
+            .size = (Vector2){width,height},
+            .resolution = resolution,
             .color = SIN_COL,
         };
         func_visuals[1] = (FunctionVisual) {
+            .name = "cos",
             .function = cosf,
-            .position = (Vector2){(WINX/2)+func_visuals[0].position.x,func_visuals[0].position.y},
-            .size = func_visuals[0].size,
-            .resolution = func_visuals[0].resolution,
+            .position = (Vector2){x+width+x,y},
+            .size = (Vector2){width,height},
+            .resolution = resolution,
             .color = COS_COL,
+        };
+        func_visuals[2] = (FunctionVisual) {
+            .name = "tan",
+            .function = tanf,
+            .position = (Vector2){x+width+x+width+x,y},
+            .size = (Vector2){width,height},
+            .resolution = resolution,
+            .color = TAN_COL,
         };
     }
 
@@ -196,7 +288,53 @@ int main(void) {
 
         DrawCircleLinesV(uc.center, uc.radius, PRIMARY_COL);
         DrawCircleSector(uc.center, uc.radius, 0, -uc.deg, uc.rad / 10, CIRCLE_FILL_COL);
-        DrawCircleSectorLines(uc.center, ANGLE_FILL_RADIUS, 0, -uc.deg, uc.rad / 10, ANGLE_FILL_COL);
+        DrawCircleSectorLines(uc.center, uc.radius * 0.15 * 1.4, 0, -uc.deg, uc.rad / 10, PRIMARY_COL);
+
+        { // TAN
+            Vector2 tan_outer_pos = {
+                uc.point.x + (uc.tan * uc.radius * uc.sin),
+                uc.center.y
+            };
+            DrawLineEx(uc.point, tan_outer_pos, LINE_BIG, TAN_COL);
+            DrawCircleV(tan_outer_pos, POINT_RADIUS, TAN_COL);
+            Vector2 text_pos;
+            const float inner_padding = WINSIDE * 0.1;
+            const float outer_padding = WINSIDE * 0.05;
+            if (tan_outer_pos.x < outer_padding) {
+                text_pos.x = outer_padding;
+            } else if (
+                tan_outer_pos.x > (uc.center.x - uc.radius - inner_padding) &&
+                tan_outer_pos.x < uc.center.x
+            ) {
+                text_pos.x = (uc.center.x - uc.radius - inner_padding);
+            } else if (
+                tan_outer_pos.x > uc.center.x &&
+                tan_outer_pos.x < (uc.center.x + uc.radius + inner_padding)
+            ) {
+                text_pos.x = (uc.center.x + uc.radius + inner_padding);
+            } else if (tan_outer_pos.x > (WINSIDE - outer_padding)) {
+                text_pos.x = (WINSIDE - outer_padding);
+            } else {
+                text_pos.x = tan_outer_pos.x;
+            }
+            const float vertical_padding = WINSIDE * 0.05;
+            if (uc.deg <= 180) {
+                text_pos.y = tan_outer_pos.y + vertical_padding;
+            } else {
+                text_pos.y = tan_outer_pos.y - vertical_padding;
+            }
+            draw_text_centered(
+                &font,
+                TEXT_FLAG_NONE,
+                text_pos,
+                0,
+                (uc.tan > -100) && (uc.tan < 100) ? TextFormat("%.2f", uc.tan) : "??",
+                TAN_COL
+            );
+        }
+
+        draw_angles_on_unit_circle(&font, &uc, visual_angles, visual_angles_count);
+        draw_right_angle(&uc);
 
         DrawLine(
             uc.position.x,
@@ -214,17 +352,30 @@ int main(void) {
         );
 
         Vector2 sin_corner = {uc.center.x, uc.point.y};
-        DrawLineEx(uc.center, sin_corner, LINE_BIG, SIN_COL);
-        DrawLineEx(sin_corner, uc.point, LINE_SMALL, SIN_COL);
-        DrawCircleV(sin_corner, POINT_RADIUS, SIN_COL);
-
         Vector2 cos_corner = {uc.point.x, uc.center.y};
-        DrawLineEx(uc.center, cos_corner, LINE_BIG, COS_COL);
+
+        DrawLineEx(sin_corner, uc.point, LINE_SMALL, SIN_COL);
         DrawLineEx(cos_corner, uc.point, LINE_SMALL, COS_COL);
-        DrawCircleV(cos_corner, POINT_RADIUS, COS_COL);
 
         DrawLineEx(uc.center, uc.point, LINE_BIG, PRIMARY_COL);
         DrawCircleV(uc.point, POINT_RADIUS, PRIMARY_COL);
+
+        DrawLineEx(uc.center, sin_corner, LINE_BIG, SIN_COL);
+        DrawCircleV(sin_corner, POINT_RADIUS, SIN_COL);
+
+        DrawLineEx(uc.center, cos_corner, LINE_BIG, COS_COL);
+        DrawCircleV(cos_corner, POINT_RADIUS, COS_COL);
+
+        {
+            float offset = (WINSIDE * 0.05);
+            float x = uc.position.x - offset;
+            float y = uc.position.y - offset;
+            float o = (uc.radius * 2) + (offset * 2);
+            draw_text_centered(&font, TEXT_FLAG_LARGE, (Vector2){x+o, y   }, 0, "I", PRIMARY_COL);
+            draw_text_centered(&font, TEXT_FLAG_LARGE, (Vector2){x  , y   }, 0, "II", PRIMARY_COL);
+            draw_text_centered(&font, TEXT_FLAG_LARGE, (Vector2){x  , y+o }, 0, "III", PRIMARY_COL);
+            draw_text_centered(&font, TEXT_FLAG_LARGE, (Vector2){x+o, y+o }, 0, "IV", PRIMARY_COL);
+        }
 
         for (int i = 0; i < func_visuals_count; i++) {
             FunctionVisual *fv = &(func_visuals[i]);
@@ -242,7 +393,7 @@ int main(void) {
                     x, fv->position.y + (fv->size.y),
                     WHITE
                 );
-                Vector2 text_position = {x, fv->position.y - WINY * 0.05};
+                Vector2 text_position = {x, fv->position.y - WINSIDE * 0.05};
                 float text_rotation = 315;
                 switch (j) {
                 case 0: draw_text_centered(&font, TEXT_FLAG_NONE, text_position, text_rotation, "0", PRIMARY_COL); break;
@@ -259,50 +410,76 @@ int main(void) {
                 fv->position.x,
                 fv->position.y - (fv->function(0) * half_height) + half_height,
             };
+            float func_min = fv->position.y;
+            float func_max = (fv->position.y + fv->size.y);
             for (int j = 0; j <= fv->resolution; j++) {
                 Vector2 next = {
                     fv->position.x + x_fract*j,
                     fv->position.y - (fv->function(y_fract*j) * half_height) + half_height,
                 };
-                DrawLineEx(prev, next, LINE_BIG, fv->color);
+                if (prev.y >= func_min &&
+                    prev.y <= func_max &&
+                    next.y >= func_min &&
+                    next.y <= func_max
+                ) {
+                    DrawLineEx(prev, next, LINE_BIG, fv->color);
+                }
                 prev = next;
             }
 
-            Vector2 func_y_pos = {
-                fv->position.x + (fv->size.x) / PI / 2 * uc.rad,
-                fv->position.y - (fv->function(uc.rad) * half_height) + half_height,
-            };
+            float current_rad_result = fv->function(uc.rad);
+            bool inside_bounds = (current_rad_result <= 1) && (current_rad_result >= -1);
+            Vector2 func_pos;
+            func_pos.x = fv->position.x + (fv->size.x) / PI / 2 * uc.rad;
+            if (inside_bounds) {
+                func_pos.y = fv->position.y - (current_rad_result * half_height) + half_height;
+                DrawCircleV(func_pos, POINT_RADIUS, PRIMARY_COL);
+            } else {
+                if (current_rad_result > 1) {
+                    func_pos.y = fv->position.y;
+                } else {
+                    func_pos.y = fv->position.y + fv->size.y;
+                }
+            }
+            DrawLine(
+                fv->position.x, func_pos.y,
+                func_pos.x, func_pos.y,
+                PRIMARY_COL
+            );
+            bool gigantic = !inside_bounds && current_rad_result <= -100 || current_rad_result >= 100;
             draw_text_centered(
                 &font,
                 TEXT_FLAG_NONE,
-                (Vector2){fv->position.x - (WINX * 0.05), func_y_pos.y},
+                (Vector2){fv->position.x - (WINSIDE * 0.05), func_pos.y},
                 0,
-                TextFormat("%.2f", uc.sin),
+                !gigantic ? TextFormat("%.2f", current_rad_result) : "??",
                 fv->color
             );
-            DrawLine(
-                fv->position.x, func_y_pos.y,
-                func_y_pos.x, func_y_pos.y,
-                PRIMARY_COL
+            draw_text_centered(
+                &font,
+                TEXT_FLAG_LARGE,
+                (Vector2){fv->position.x + (fv->size.x/2), fv->position.y + (fv->size.y) + WINSIDE * 0.05},
+                0,
+                fv->name,
+                fv->color
             );
-            DrawCircleV(func_y_pos, POINT_RADIUS, PRIMARY_COL);
         }
 
-        draw_text_centered(&font, TEXT_FLAG_NONE, (Vector2){(WINX/2)-(WINX*0.25),WINY*0.05}, 0, TextFormat("deg: %.2f", uc.deg), PRIMARY_COL);
-        draw_text_centered(&font, TEXT_FLAG_NONE, (Vector2){(WINX/2)+(WINX*0.25),WINY*0.05}, 0, TextFormat("rad: %.2f", uc.rad), PRIMARY_COL);
+        draw_text_centered(&font, TEXT_FLAG_NONE, (Vector2){(WINSIDE/2)-(WINSIDE*0.25),WINSIDE*0.05}, 0, TextFormat("deg: %.2f", uc.deg), PRIMARY_COL);
+        draw_text_centered(&font, TEXT_FLAG_NONE, (Vector2){(WINSIDE/2)+(WINSIDE*0.25),WINSIDE*0.05}, 0, TextFormat("rad: %.2f", uc.rad), PRIMARY_COL);
 
         const float trig_func_text_offset = 0.05f;
 
         Vector2 sin_text_position = {
-            (uc.cos < 0) ? uc.center.x + (WINX*trig_func_text_offset) : uc.center.x - (WINX*trig_func_text_offset),
+            (uc.cos < 0) ? uc.center.x + (WINSIDE*trig_func_text_offset) : uc.center.x - (WINSIDE*trig_func_text_offset),
             uc.center.y - (uc.sin * uc.radius),
         };
-        draw_text_centered(&font, TEXT_FLAG_NONE, sin_text_position, 0, TextFormat("%.2f", uc.sin), SIN_COL);
+        draw_text_centered(&font, TEXT_FLAG_BACKING_RECTANGLE, sin_text_position, 0, TextFormat("%.2f", uc.sin), SIN_COL);
         Vector2 cos_text_position = {
             uc.center.x + (uc.cos * uc.radius),
-            (uc.sin < 0) ? uc.center.y - (WINY*trig_func_text_offset) : uc.center.y + (WINY*trig_func_text_offset),
+            (uc.sin < 0) ? uc.center.y - (WINSIDE*trig_func_text_offset) : uc.center.y + (WINSIDE*trig_func_text_offset),
         };
-        draw_text_centered(&font, TEXT_FLAG_NONE, cos_text_position, 0, TextFormat("%.2f", uc.cos), COS_COL);
+        draw_text_centered(&font, TEXT_FLAG_BACKING_RECTANGLE, cos_text_position, 0, TextFormat("%.2f", uc.cos), COS_COL);
 
         EndDrawing();
     }
